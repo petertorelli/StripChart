@@ -53,28 +53,11 @@ console.warn({PIXEL_RATIO})
 // ODD, we no longer need pixel ratio?
 PIXEL_RATIO = 1
 
-function StripChart(targetDivId) {
+function StripChart(id) {
 	this.initializeMemberData();
 	this.initializeProperties();
-	this.initializeDomObjects(targetDivId);
+	this.initializeDomObjects(id);
 };
-
-/**
- * For downloading, create an URL with the image data.
- */
-StripChart.prototype.getDataURL = function() {
-	let canvas = document.createElement('canvas');
-	let context = canvas.getContext('2d');
-	let w = this.target.getBoundingClientRect().width
-	let h = this.target.getBoundingClientRect().height
-	context.setTransform(PIXEL_RATIO, 0, 0, PIXEL_RATIO, 0, 0);
-	context.canvas.width = w * PIXEL_RATIO;
-	context.canvas.height = h * PIXEL_RATIO;
-	context.canvas.style.width = w + 'px';
-	context.canvas.style.height = h + 'px';
-	context.drawImage(this.ctx.canvas, 0, 0);
-	return canvas.toDataURL('image/png', 1);
-}
 
 StripChart.prototype.initializeMemberData = function() {
 	// Interactivity
@@ -94,8 +77,8 @@ StripChart.prototype.initializeMemberData = function() {
 	this.chartRect = { tx: 0, ty: 0, w: 0, h: 0 };
 	// properties
 	this.p = new Map();
-	// Let host use its own controllers.
-	this.zoomCallback = undefined;
+
+	this.zoomStack = []
 };
 
 StripChart.prototype.setAutoScaleY = function (autoscale) {
@@ -120,11 +103,13 @@ StripChart.prototype.initializeProperties = function() {
 	this.p.set('font', undefined);
 };
 
-StripChart.prototype.initializeDomObjects = function(targetDivId) {
-	this.targetDivId = targetDivId; // for blur on overlay drag
-	this.target = document.getElementById(targetDivId)
-	if (this.target == null)
-		throw new RangeError(`Target DIV ${targetDivId} not found`);
+StripChart.prototype.initializeDomObjects = function(id) {
+	this.id = id
+	let node = document.getElementById(id)
+	this.targetChart = node.querySelector('.strip-chart')
+	if (this.targetChart == null) {
+		throw new RangeError(`Target DIV ${id} not found`)
+	}
 
 	// The main chart canvas
 	const cvs = document.createElement('canvas')
@@ -132,16 +117,16 @@ StripChart.prototype.initializeDomObjects = function(targetDivId) {
 	cvs.style['z-index'] = 1
 	cvs.className += ' chart'
 	this.ctx = cvs.getContext('2d')
-	this.target.appendChild(cvs)
+	this.targetChart.appendChild(cvs)
 
 	// Use this for the selection region; makes drawing more responsive
 	const overlay = document.createElement('canvas')
 	overlay.style.position = 'absolute'
 	overlay.style['z-index'] = 2
 	overlay.className += ' overlay'
-	overlay.setAttribute('data-target', targetDivId);
+	overlay.setAttribute('data-target', id);
 	this.ctxOverlay = overlay.getContext('2d');
-	this.target.appendChild(overlay)
+	this.targetChart.appendChild(overlay)
 
 	// OK, now that everything is created, resize!
 	this.resize();
@@ -154,22 +139,29 @@ StripChart.prototype.initializeDomObjects = function(targetDivId) {
 	 * .ycoord = a formatted y-coordinate
 	 * .reset  = reset zoom if there is any
 	 */
-	let controlId = `${targetDivId}-controls`
-	this.xcoordElement = document.querySelector(`#${controlId} .xcoord`)
-	this.ycoordElement = document.querySelector(`#${controlId} .ycoord`)
-	let btn = document.querySelector(`#${controlId} .reset`)
+	console.log()
+
+
+	this.xcoordElement = node.querySelector('.xcoord')
+	this.ycoordElement = node.querySelector('.ycoord')
+	let btn
+	btn = node.querySelector('.reset')
 	if (btn) {
 		btn.addEventListener('click', () => {
 			this.resetZoom()
 		})
-	}
-
-	// Don't allow zooming if there is no reset button
-	if (btn) {
+		// Don't allow zooming if there is no reset button
 		overlay.addEventListener('click', event => {
 			this.handleMouse('click', event.offsetX, event.offsetY);
 		})
 	}
+	btn = node.querySelector('.previous')
+	if (btn) {
+		btn.addEventListener('click', () => {
+			this.lastZoom()
+		})
+	}
+
 	overlay.addEventListener('mousemove', event => {
 		this.handleMouse('move', event.offsetX, event.offsetY);
 	})
@@ -177,29 +169,40 @@ StripChart.prototype.initializeDomObjects = function(targetDivId) {
 		this.handleMouse('leave', event.offsetX, event.offsetY);
 	})
 
-	window.onresize =
-		debounce(() => {
-			this.resize();
-			this.draw();
-		}, 250)
+	window.onresize = debounce(() => {
+		this.resize();
+		this.draw();
+	}, 250)
 	
-};
+}
+
+StripChart.prototype.lastZoom = function() {
+	if (this.zoomStack.length < 1) {
+		return
+	}
+	let zoom = this.zoomStack.pop()
+	this.visible.max.x = zoom.max.x
+	this.visible.max.y = zoom.max.y
+	this.visible.min.x = zoom.min.x
+	this.visible.min.y = zoom.min.y
+	this.draw()
+}
 
 /**
  * The subscriber to the object must provide a reset zoom control, so use
  * the following three functions to manage it.
  */
-
 StripChart.prototype.resetZoom = function() {
+	this.zoomStack = []
 	// Zoom is in UCS coords
-	this.zoomWindow = { start: {x: 0, y: 0}, end: {x: 0, y: 0} };
-	this.visible.max.x = this.dataLimits.max.x;
-	this.visible.max.y = this.dataLimits.max.y;
-	this.visible.min.x = this.dataLimits.min.x;
-	this.visible.min.y = this.dataLimits.min.y;
+	this.zoomWindow = { start: {x: 0, y: 0}, end: {x: 0, y: 0} }
+	this.visible.max.x = this.dataLimits.max.x
+	this.visible.max.y = this.dataLimits.max.y
+	this.visible.min.x = this.dataLimits.min.x
+	this.visible.min.y = this.dataLimits.min.y
 	this.visible.p1 = 0
 	this.visible.p2 = 0
-	this.draw();
+	this.draw()
 }
 
 // Given an offset in the div coordinate space, convert it to a UCS
@@ -230,10 +233,8 @@ StripChart.prototype.zoomX = function(x1, x2, noMin) {
 	if (this.dataBuffer == undefined) {
 		return
 	}
-	
 	x1 = (x1 !== undefined) ? x1 : this.zoomWindow.start.x;
 	x2 = (x2 !== undefined) ? x2 : this.zoomWindow.end.x;
-
 	// Smallest selection width is 5px unless we REALLY want the interval
 	if (!noMin && Math.abs(x2 - x1) < (5 / this.xppu)) {
 		return;
@@ -255,6 +256,12 @@ StripChart.prototype.zoomX = function(x1, x2, noMin) {
 		return
 	}
 	let stats = fstats(this.dataBuffer, sample1, (sample2 - sample1))
+	
+	this.zoomStack.push({
+		min: { x: this.visible.min.x, y: this.visible.min.y },
+		max: { x: this.visible.max.x, y: this.visible.max.y },
+	})
+
 	this.visible.min.x = p1
 	this.visible.min.y = stats.min;
 	this.visible.max.x = p2
@@ -491,21 +498,22 @@ StripChart.prototype.generateTicRange = function(min, max, step) {
  * IMPORTANT: The callee must do the .restore()
  */
 StripChart.prototype.pushChartTransform = function(ctx) {
-	if (ctx === undefined)
-		ctx = this.ctx;
-	ctx.save();
+	if (ctx === undefined) {
+		ctx = this.ctx
+	}
+	ctx.save()
 	// Flip
-	ctx.scale(1, -1);
+	ctx.scale(1, -1)
 	// Shift for canvas height
 	ctx.translate(0, -1 * ctx.canvas.getBoundingClientRect().height)
 	// Shift for offset into canvas
-	ctx.translate(this.chartRect.tx, 0);
-	ctx.translate(0, this.chartRect.ty);
+	ctx.translate(this.chartRect.tx, 0)
+	ctx.translate(0, this.chartRect.ty)
 	// Scale from pixels to unit vectors
-	ctx.scale(this.xppu, this.yppu);
+	ctx.scale(this.xppu, this.yppu)
 	// Shift for range into view
-	ctx.translate(-1 * this.visible.min.x, -1 * this.visible.min.y);
-};
+	ctx.translate(-1 * this.visible.min.x, -1 * this.visible.min.y)
+}
 
 /**
  * When stroking lines, if the transform isn't reset, the lineWidth scales. A
@@ -515,6 +523,7 @@ StripChart.prototype.pushChartTransform = function(ctx) {
  */
 StripChart.prototype.restoreTransform = function(ctx) {
 	ctx.setTransform(PIXEL_RATIO, 0, 0, PIXEL_RATIO, 0, 0);
+	ctx.restore()
 };
 
 // Wait why aren't we using Math.func functions?
@@ -527,7 +536,7 @@ function fstats (buffer, offsetSamples=0, nSamples=0) {
 			nSamples = totalSamples - offsetSamples
 		}
 	}
-	let max = Number.MIN_VALUE
+	let max = -1 * Number.MAX_VALUE
 	let min = Number.MAX_VALUE
 	let avg = 0
 	let v
@@ -595,6 +604,9 @@ StripChart.prototype.drawData = function () {
 	 * nearest inclusive samples fails to render the lines extending out of
 	 * the chart area. Instead, always pick lhs/rhs points that are one beyond
 	 * the width of the visible area and clip the lines.
+	 *
+	 * TODO: Clipping does not appear to be working. Wondering if it is due to
+	 *       float precision errors? Switch ceil and floor for lhs/rhs...
 	 */
 	let clipx = this.visible.min.x
 	let clipy = this.visible.min.y
@@ -607,14 +619,6 @@ StripChart.prototype.drawData = function () {
 	 */
 	let lhs = Math.floor((this.visible.min.x - this.xstart) / this.xstep)
 	let rhs = Math.ceil((this.visible.max.x - this.xstart) / this.xstep)
-	// Scoot over one point off the chart so that the RHS ends on a clip rect
-	if (rhs < (this.dataBuffer.length - 1)) {
-		/** 
-		 * soft-bug: we didn't update the visible Y bounds, so the line might
-		 * disappear off the top/bottom, but at least isn't ending mid-chart.
-		 */
-		rhs += 1
-	}
 	let nSamples = rhs - lhs
 
 	// I wrote this out in English to keep from getting confused
@@ -638,11 +642,11 @@ StripChart.prototype.drawData = function () {
 	// Don't downsample if we have enough fidelity (or sparse data)
 	if (samplesPerPixel <= 1) {
 		this.pushChartTransform()
-		this.ctx.rect(clipx, clipy, clipw, cliph);
-		this.ctx.clip();
+		//this.ctx.rect(clipx, clipy, clipw, cliph);
+		//this.ctx.clip();
 		this.ctx.beginPath();
 		let x0 = (lhs * this.xstep) + this.xstart
-		let y0 = this.dataBuffer[0];
+		let y0 = this.dataBuffer[lhs];
 		this.ctx.moveTo(x0, y0)
 		for (let i = 0; i < nSamples; ++i) {
 			let xi = ((i + lhs) * this.xstep) + this.xstart
@@ -653,10 +657,9 @@ StripChart.prototype.drawData = function () {
 		this.ctx.lineWidth = this.p.get('line-width')
 		this.ctx.strokeStyle = this.p.get('stroke-style')
 		this.ctx.stroke()
-		this.ctx.restore()
 		return
 	}
-	// Rather than looping throuh fstats three times, do it once
+	// Rather than looping through fstats three times, do it once
 	let substats
 	let maxs = new Float32Array(nSamples)
 	let mins = new Float32Array(nSamples)
@@ -669,15 +672,10 @@ StripChart.prototype.drawData = function () {
 		avgs[i] = substats.avg
 		maxs[i] = substats.max
 	}
-	/**
-	 * There's some weirdness with the save/restore transform vs context here.
-	 * You need to restore the transform before stroking the path otherwise
-	 * the stroke width scales with the transform. Unexpected.
-	 */
 	let series = (data, color) => {
 		this.pushChartTransform()
-		this.ctx.rect(clipx, clipy, clipw, cliph);
-		this.ctx.clip();
+		//this.ctx.rect(clipx, clipy, clipw, cliph);
+		//this.ctx.clip();
 		this.ctx.beginPath();
 		let x0 = (lhs * this.xstep) + this.xstart
 		let y0 = data[0];
@@ -691,11 +689,10 @@ StripChart.prototype.drawData = function () {
 		this.ctx.lineWidth = this.p.get('line-width')
 		this.ctx.strokeStyle = color
 		this.ctx.stroke()
-		this.ctx.restore()
 	}
-	series(maxs, 'silver')
 	series(mins, 'silver')
-	series(avgs, 'red')
+	series(maxs, 'silver')
+	series(avgs, this.p.get('stroke-style'))
 }
 
 StripChart.prototype.drawYLabel = function() {
@@ -807,7 +804,6 @@ StripChart.prototype.drawVerticalGridlines = function() {
 	this.ctx.lineWidth = 0.2;
 	this.ctx.strokeStyle = 'gray';
 	this.ctx.stroke();
-	this.ctx.restore();
 };
 
 StripChart.prototype.drawHorizontalGridlines = function() {
@@ -826,7 +822,6 @@ StripChart.prototype.drawHorizontalGridlines = function() {
 	this.ctx.lineWidth = 0.2;
 	this.ctx.strokeStyle = 'gray';
 	this.ctx.stroke();
-	this.ctx.restore();
 };
 
 StripChart.prototype.drawGridlines = function() {
@@ -857,7 +852,6 @@ StripChart.prototype.drawOriginAxes = function() {
 	this.ctx.lineWidth = 1;
 	this.ctx.strokeStyle = 'black';
 	this.ctx.stroke();
-	this.ctx.restore();
 
 	this.pushChartTransform();
 	this.ctx.beginPath();
@@ -878,13 +872,12 @@ StripChart.prototype.drawOriginAxes = function() {
 	this.ctx.lineWidth = 0.2;
 	this.ctx.strokeStyle = 'gray';
 	this.ctx.stroke();
-	this.ctx.restore();
 
 };
 
 StripChart.prototype.resize = function() {
-	const w = this.target.getBoundingClientRect().width;
-	const h = this.target.getBoundingClientRect().height;
+	const w = this.targetChart.getBoundingClientRect().width;
+	const h = this.targetChart.getBoundingClientRect().height;
 
 	this.ctx.canvas.width = w * PIXEL_RATIO;
 	this.ctx.canvas.height = h * PIXEL_RATIO;
@@ -928,6 +921,24 @@ StripChart.prototype.overlayHighlight = function(x1, x2) {
 StripChart.prototype.clearOverlay = function() {
 	this.ctxOverlay.clearRect(0, 0, this.ctxOverlay.canvas.width, 
 		this.ctxOverlay.canvas.height);
+}
+
+
+/**
+ * For downloading, create an URL with the image data.
+ */
+StripChart.prototype.getDataURL = function() {
+	let canvas = document.createElement('canvas');
+	let context = canvas.getContext('2d');
+	let w = this.targetChart.getBoundingClientRect().width
+	let h = this.targetChart.getBoundingClientRect().height
+	context.setTransform(PIXEL_RATIO, 0, 0, PIXEL_RATIO, 0, 0);
+	context.canvas.width = w * PIXEL_RATIO;
+	context.canvas.height = h * PIXEL_RATIO;
+	context.canvas.style.width = w + 'px';
+	context.canvas.style.height = h + 'px';
+	context.drawImage(this.ctx.canvas, 0, 0);
+	return canvas.toDataURL('image/png', 1);
 }
 
 // todo nodify

@@ -2,13 +2,11 @@
 <html>
 <head><title></title>
 <style>
-body {
-	margin: 0px;
-}
-div.chart {
-	background: white;
+div.parent {
+	margin: 5em;
 	border: 1px solid #999;
 }
+
 div.float {
 	position: relative;
 	text-align: left;
@@ -24,7 +22,6 @@ div.full {
 	height: 300px;
 	margin: 5px 5px 0px 5px ;
 }
-
 div.clear {
 	clear: both;
 }
@@ -36,22 +33,16 @@ canvas {
     -ms-user-select: none;
     user-select: none;
 }
-/*
-canvas:active {
-	cursor: col-resize;
-}
-*/
 
 </style>
 </head>
 <body>
 <div style='text-align: center;'>
-	<div class='float'>
-		<div id='chart1' class='chart float'></div>
-		<div id='chart1-controls'>
-			<span>
-				<button class='reset'>Reset Zoom</button>
-			</span>
+	<div class='float parent' id='chart1'>
+		<div class='strip-chart float'></div>
+		<div>
+			<button class='reset'>Reset Zoom</button>
+			<button class='previous'>Previous Zoom</button>
 			<span>(</span>
 			<span class='xcoord'>0</span>
 			<span>,</span>
@@ -59,12 +50,11 @@ canvas:active {
 			<span>)</span>
 		</div>
 	</div>
-	<div class='float'>
-		<div id='chart2' class='chart float'></div>
-		<div id='chart2-controls'>
-			<span>
-				<button class='reset'>Reset Zoom</button>
-			</span>
+	<div class='float parent' id='chart2'>
+		<div class='strip-chart float'></div>
+		<div>
+			<button class='reset'>Reset Zoom</button>
+			<button class='previous'>Previous Zoom</button>
 			<span>(</span>
 			<span class='xcoord'>0</span>
 			<span>,</span>
@@ -72,12 +62,11 @@ canvas:active {
 			<span>)</span>
 		</div>
 	</div>
-	<div class='float'>
-		<div id='chart3' class='chart float'></div>
-		<div id='chart3-controls'>
-			<span>
-				<button class='reset'>Reset Zoom</button>
-			</span>
+	<div class='float parent' id='chart3'>
+		<div class='strip-chart float'></div>
+		<div>
+			<button class='reset'>Reset Zoom</button>
+			<button class='previous'>Previous Zoom</button>
 			<span>(</span>
 			<span class='xcoord'>0</span>
 			<span>,</span>
@@ -85,12 +74,11 @@ canvas:active {
 			<span>)</span>
 		</div>
 	</div>
-	<div class='float'>
-		<div id='chart4' class='chart float'></div>
-		<div id='chart4-controls'>
-			<span>
-				<button class='reset'>Reset Zoom</button>
-			</span>
+	<div class='float parent' id='chart4'>
+		<div class='strip-chart float'></div>
+		<div>
+			<button class='reset'>Reset Zoom</button>
+			<button class='previous'>Previous Zoom</button>
 			<span>(</span>
 			<span class='xcoord'>0</span>
 			<span>,</span>
@@ -98,12 +86,11 @@ canvas:active {
 			<span>)</span>
 		</div>
 	</div>
-	<div class='float'>
-		<div id='chart5' class='chart float'></div>
-		<div id='chart5-controls'>
-			<span>
-				<button class='reset'>Reset Zoom</button>
-			</span>
+	<div class='float parent' id='chart5'>
+		<div class='strip-chart float'></div>
+		<div>
+			<button class='reset'>Reset Zoom</button>
+			<button class='previous'>Previous Zoom</button>
 			<span>(</span>
 			<span class='xcoord'>0</span>
 			<span>,</span>
@@ -111,12 +98,11 @@ canvas:active {
 			<span>)</span>
 		</div>
 	</div>
-	<div class='float'>
-		<div id='chart6' class='chart float'></div>
-		<div id='chart6-controls'>
-			<span>
-				<button class='reset'>Reset Zoom</button>
-			</span>
+	<div class='float parent' id='chart6'>
+		<div class='strip-chart float'></div>
+		<div>
+			<button class='reset'>Reset Zoom</button>
+			<button class='previous'>Previous Zoom</button>
 			<span>(</span>
 			<span class='xcoord'>0</span>
 			<span>,</span>
@@ -125,7 +111,19 @@ canvas:active {
 		</div>
 	</div>
 	<div class='clear'></div>
-	<div id='chart7' class='chart full'></div>
+	<div id='chart7' class='parent'>
+		<div class='strip-chart full'></div>	
+		<div>
+			<button class='reset'>Reset Zoom</button>
+			<button class='previous'>Previous Zoom</button>
+			<span>(</span>
+			<span class='xcoord'>0</span>
+			<span>,</span>
+			<span class='ycoord'>0</span>
+			<span>)</span>
+		</div>
+	</div>
+
 </div>
 <script type="text/javascript" src='chart.js'></script>
 <script type="text/javascript" src='test.js'></script>

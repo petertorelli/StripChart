@@ -31,13 +31,16 @@ c4.set('origin', undefined);
 c4.set('stroke-style', 'orange');
 
 const c5 = new StripChart('chart5');
-c5.set('title', '1,000,000 points with noise [-3,0] zoom bug');
+c5.set('title', '1,000,000 points');
+c5.set('stroke-style', 'green');
 
 const c6 = new StripChart('chart6');
 c6.set('title', 'noise, min/avg/max (zoom to see)');
 
 const c7 = new StripChart('chart7');
 c7.set('title', 'Resize w/Div, no zoom');
+c7.set('line-width', '4');
+c7.set('stroke-style', 'green');
 
 
 let ppu = (1 / c1.widthInPixels());
