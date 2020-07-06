@@ -23,15 +23,16 @@ call `StripChart.draw()`.
 
 # Extras
 
-If you create a DIV with ID set to `"chart ID"-controls`, the constructor will
-look for three DOM object classes under that node: `xcoord`, `ycoord`, and
-`reset`. The first
+When you create a DIV with ID set to `"chart ID"`, the constructor will
+look for several DOM object classes under that node: `xcoord`, `ycoord`,
+`reset`, and `previous`. The first
 two will have their `.innerHTML` field updated if the mouse moves in the chart
 DIV with a formated x- or y- coordinate. The `reset` element will have an
 event listener attached to it which responds to `click` events. The presence
 of this element will enable zooming by clicking on the chart, and resetting
 the chart by clicking on the `reset` element. Only the first instance of each
-class is used under the chart DIV.
+class is used under the chart DIV. The `previous` element will pop to the
+last zoom on click.
 
 # Zooming
 
@@ -41,6 +42,9 @@ leaves the chart area. The second click updates the display window to that
 zoomed region. Clicking the `reset` class object (see above) will reset the
 zoom to show the entire dataset. Zooming is disabled if there is no `reset`
 class element.
+
+A zoom stack is maintained and if a `.previous` class DOM object exists in
+the DOM hierarchy, it will pop to the last zoom.
 
 # Subsampling
 
