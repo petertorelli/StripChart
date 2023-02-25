@@ -466,7 +466,7 @@ export class StripChart {
     if (newmax > max) {
       newmax -= cstep;
     }
-    let result = [];
+    let result: number[] = [];
     for (let i = newmin; i <= max; i += cstep) {
       result.push(i);	
     }
