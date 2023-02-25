@@ -156,10 +156,10 @@ export class StripChart {
       this.handleMouse('leave', event.offsetX, event.offsetY);
     })
       
-    window.onresize = debounce(() => {
-        this.resize();
-        this.draw();
-      }, 250);
+    window.addEventListener('resize', debounce(() => {
+      this.resize();
+      this.draw();
+    }, 250));
     
     // OK, now that everything is created, resize!
     this.resize();
@@ -185,7 +185,7 @@ export class StripChart {
     this.props.set('pad', [80, 70, 40, 35]); // L, B, T, R
     // TODO support multiple series
     this.props.set('stroke-style', 'red');
-    this.props.set('line-width', '0.5');
+    this.props.set('line-width', '1');
     // Straight-up HTML5 here, Gnuplot typeface handling is painful
     this.props.set('font', undefined);
   }
@@ -317,14 +317,18 @@ export class StripChart {
     this.overlayHighlight(this.zoomWindow.start.x, this.zoomWindow.end.x)
   }
 
-  private zoomX(x1: number|null = null, x2: number|null = null, noMin: boolean = false) {
+  private zoomX(zw: ZoomWindow|undefined = undefined) {
+    if (zw === undefined) {
+      zw = this.zoomWindow;
+    }
     if (this.dataBuffer == undefined) {
       return
     }
-    x1 = (x1 !== null) ? x1 : this.zoomWindow.start.x;
-    x2 = (x2 !== null) ? x2 : this.zoomWindow.end.x;
+    let x1 = zw.start.x;
+    let x2 = zw.end.x;
+
     // Smallest selection width is 5px unless we REALLY want the interval
-    if (!noMin && Math.abs(x2 - x1) < (5 / this.xppu)) {
+    if (Math.abs(x2 - x1) < (5 / this.xppu)) {
       return;
     }
     // All x-ranges start at zero
@@ -336,15 +340,17 @@ export class StripChart {
       p1 = p2;
       p2 = tmp;
     }
+
     // Autorange y-axis
-    let sample1 = Math.floor((p1 - this.xstart) / this.xstep)
-    let sample2 = Math.ceil((p2 - this.xstart) / this.xstep)
+    let sample1 = Math.floor((p1 - this.xstart) / this.xstep);
+    let sample2 = Math.ceil((p2 - this.xstart) / this.xstep);
     // Don't zoom too small
     if ((sample2 - sample1) < 10) {
+      console.log("still too small", this.id);
       return
     }
     let stats = fstats(this.dataBuffer, sample1, (sample2 - sample1))
-    
+
     this.zoomStack.push({
       min: { x: this.visible.min.x, y: this.visible.min.y },
       max: { x: this.visible.max.x, y: this.visible.max.y },
@@ -390,6 +396,7 @@ export class StripChart {
   };
 
   public draw() {
+    this.resize();
     this.drawTemplate()
     this.drawData()
   }
@@ -470,7 +477,7 @@ export class StripChart {
   private generateTicStep(min: number, max:number, step: number|string): number {
     let cstep: number;
     if (typeof step === 'string') {
-      if (step === 'auto') {
+      if (step === 'auto' || step === 'none') {
         cstep = this.quantizeNormalTics(min, max);
       } else {
         let found: RegExpMatchArray|null = step.match(/fixed\s+(\d+)/);
@@ -592,7 +599,7 @@ export class StripChart {
         this.ctx.lineTo(0, this.visible.max.y);
       }
     }
-    if (0) {
+    if (0) { // add a left and bottom line
       this.ctx.moveTo(this.visible.min.x, this.visible.max.y);
       this.ctx.lineTo(this.visible.min.x, this.visible.min.y);
       this.ctx.lineTo(this.visible.max.x, this.visible.min.y);
@@ -630,10 +637,18 @@ export class StripChart {
       this.ctx.font = this.props.get('font');
     }
     this.drawChartTitle();
-    this.drawXLabel();
-    this.drawXTicValues();
-    this.drawYLabel();
-    this.drawYTicValues();
+    if (this.props.get('xlabel') != "") {
+      this.drawXLabel();
+    }
+    if (this.props.get('xtics') != "none") {
+      this.drawXTicValues();
+    }
+    if (this.props.get('ylabel') != "") {
+      this.drawYLabel();
+    }
+    if (this.props.get('ytics') != "none") {
+      this.drawYTicValues();
+    }
   }
 
   private drawChartTitle() {
@@ -741,36 +756,26 @@ export class StripChart {
     });
     this.ctx.restore();
   };
-  
     
   private drawData() {
-
     if (this.dataBuffer.length < 2) {
       return
     }
-
-    /**
-     * When the number of samples in the viewport is small, stopping at the
-     * nearest inclusive samples fails to render the lines extending out of
-     * the chart area. Instead, always pick lhs/rhs points that are one beyond
-     * the width of the visible area and clip the lines.
-     *
-     * TODO: Clipping does not appear to be working. Wondering if it is due to
-     *       float precision errors? Switch ceil and floor for lhs/rhs...
-     */
-    let clipx = this.visible.min.x
-    let clipy = this.visible.min.y
-    let clipw = (this.visible.max.x - this.visible.min.x)
-    let cliph = (this.visible.max.y - this.visible.min.y)
-
+    const clipx = this.visible.min.x
+    const clipy = this.visible.min.y
+    const clipw = (this.visible.max.x - this.visible.min.x)
+    const cliph = (this.visible.max.y - this.visible.min.y)
     /**
      * These will be the sample interval indices, inclusive [lhs, rhs]. We
      * need to shift by `xstart` so that the indices are 0-based.
      */
     let lhs = Math.floor((this.visible.min.x - this.xstart) / this.xstep);
     let rhs = Math.ceil((this.visible.max.x - this.xstart) / this.xstep);
-    let nSamples = rhs - lhs
-
+    // If there's a datapoint to the right, render beyond it to avoid a gap.
+    if (rhs < (this.dataBuffer.length - 1)) {
+      ++rhs;
+    }
+    let nSamples = rhs - lhs;
     // I wrote this out in English to keep from getting confused
     let secondsPerSample = this.xstep;
     let pixelsPerChart = this.chartRect.w;
@@ -779,71 +784,67 @@ export class StripChart {
     let secondsPerPixel = secondsPerChart / pixelsPerChart
     // how many samples are in that width?
     let samplesPerPixel = Math.floor(secondsPerPixel / secondsPerSample)
-    // This is our downsample rate
-    let bytesPerPixel = samplesPerPixel * 4
-
-    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height)
-    this.clearOverlay()
-
-    this.drawGridlines();
-    this.drawOriginAxes();
-    this.drawText();
-
-    // Don't downsample if we have enough fidelity (or sparse data)
+    /**
+     * If there are one or fewer samples per pixel, there's no need to down-
+     * sample to min/avg/max: render the actual points in the transformed
+     * coordinate space.
+     * 
+     * If there are more than one sample per pixel, render three lines, min/
+     * avg/max. Construct these datasets by creeping through the data buffer
+     * in subsample-sized chunks and use fstats. Then render these.
+     */
     if (samplesPerPixel <= 1) {
       this.pushChartTransform()
-      //this.ctx.rect(clipx, clipy, clipw, cliph);
-      //this.ctx.clip();
+      this.ctx.rect(clipx, clipy, clipw, cliph);
+      this.ctx.clip();
       this.ctx.beginPath();
-      let x0 = (lhs * this.xstep) + this.xstart
-      let y0 = this.dataBuffer[lhs];
+      const x0 = (lhs * this.xstep) + this.xstart;
+      const y0 = this.dataBuffer[lhs];
       this.ctx.moveTo(x0, y0)
       for (let i = 0; i < nSamples; ++i) {
-        let xi = ((i + lhs) * this.xstep) + this.xstart
-        let yi = this.dataBuffer[i + lhs]
-        this.ctx.lineTo(xi, yi)
+        let xi = ((i + lhs) * this.xstep) + this.xstart;
+        let yi = this.dataBuffer[i + lhs];
+        this.ctx.lineTo(xi, yi);
       }
-      this.restoreTransform(this.ctx)
-      this.ctx.lineWidth = this.props.get('line-width')
-      this.ctx.strokeStyle = this.props.get('stroke-style')
-      this.ctx.stroke()
-      return
-    }
-    // Rather than looping through fstats three times, do it once
-    let substats
-    let maxs = new Float32Array(nSamples)
-    let mins = new Float32Array(nSamples)
-    let avgs = new Float32Array(nSamples)
-    let nIndex = nSamples / samplesPerPixel
-    for (let offset, i = 0; i < nIndex; ++i) {
-      offset = (i * samplesPerPixel ) + lhs
-      substats = fstats(this.dataBuffer, offset, samplesPerPixel)
-      mins[i] = substats.min
-      avgs[i] = substats.avg
-      maxs[i] = substats.max
-    }
-
-    let series = (data: Float32Array, color: string) => {
-      this.pushChartTransform()
-      //this.ctx.rect(clipx, clipy, clipw, cliph);
-      //this.ctx.clip();
-      this.ctx.beginPath();
-      let x0 = (lhs * this.xstep) + this.xstart
-      let y0 = data[0];
-      this.ctx.moveTo(x0, y0)
-      for (let x, i = 0; i < nIndex; ++i) {
-        let xi = (((i * samplesPerPixel) + lhs) * this.xstep) + this.xstart
-        let yi = data[i]
-        this.ctx.lineTo(xi, yi)
+      this.ctx.lineWidth = this.props.get('line-width') / Math.max(this.yppu, this.xppu);
+      this.ctx.strokeStyle = this.props.get('stroke-style');
+      this.ctx.stroke();
+      this.restoreTransform(this.ctx);
+    } else {
+      let substats;
+      let maxs = new Float32Array(nSamples);
+      let mins = new Float32Array(nSamples);
+      let avgs = new Float32Array(nSamples);
+      let nIndex = nSamples / samplesPerPixel
+      for (let offset, i = 0; i < nIndex; ++i) {
+        offset = (i * samplesPerPixel ) + lhs
+        substats = fstats(this.dataBuffer, offset, samplesPerPixel)
+        mins[i] = substats.min
+        avgs[i] = substats.avg
+        maxs[i] = substats.max
       }
-      this.restoreTransform(this.ctx)
-      this.ctx.lineWidth = this.props.get('line-width')
-      this.ctx.strokeStyle = color
-      this.ctx.stroke()
+      const addSeries = (data: Float32Array, color: string) => {
+        this.pushChartTransform()
+        this.ctx.rect(clipx, clipy, clipw, cliph);
+        this.ctx.clip();
+        this.ctx.beginPath();
+        const x0 = (lhs * this.xstep) + this.xstart
+        const y0 = data[0];
+        this.ctx.moveTo(x0, y0)
+        for (let x, i = 0; i < nIndex; ++i) {
+          let xi = (((i * samplesPerPixel) + lhs) * this.xstep) + this.xstart
+          let yi = data[i]
+          this.ctx.lineTo(xi, yi)
+        }
+        this.ctx.lineWidth = this.props.get('line-width') / Math.max(this.yppu, this.xppu)
+        this.ctx.strokeStyle = color
+        this.ctx.stroke()
+        this.restoreTransform(this.ctx)
+      }
+      addSeries(mins, 'silver')
+      addSeries(maxs, 'silver')
+      addSeries(avgs, this.props.get('stroke-style'))
     }
-    series(mins, 'silver')
-    series(maxs, 'silver')
-    series(avgs, this.props.get('stroke-style'))
   }
 
   private resize() {
@@ -862,15 +863,16 @@ export class StripChart {
     this.ctxOverlay.canvas.style.height = h + 'px';
     this.ctxOverlay.setTransform(PIXEL_RATIO, 0, 0, PIXEL_RATIO, 0, 0);
   
+    // [L, B, T, R]
     let pad = this.props.get('pad');
-    if (pad === undefined)
+    if (pad === undefined) {
       pad = [0, 0, 0, 0];
+    }
     this.chartRect.tx = pad[0] ? pad[0] : 0;
     this.chartRect.ty = pad[1] ? pad[1] : 0;
-    this.chartRect.w = this.ctx.canvas.width - this.chartRect.tx - (pad[2] ? pad[2] : 0);
-    this.chartRect.h = this.ctx.canvas.height - this.chartRect.ty - (pad[3] ? pad[3] : 0);
+    this.chartRect.w = this.ctx.canvas.width - this.chartRect.tx - (pad[3] ? pad[3] : 0);
+    this.chartRect.h = this.ctx.canvas.height - this.chartRect.ty - (pad[2] ? pad[2] : 0);
   }
-
 
   public setAutoScaleY(autoscale: boolean) {
     this.autoScaleY = autoscale;
@@ -880,7 +882,7 @@ export class StripChart {
   public get(key: string) {
     return this.props.get(key);
   }
-  public set(key: string, value: string) {
+  public set(key: string, value: any) {
     return this.props.set(key, value);
   }
   
@@ -889,6 +891,11 @@ export class StripChart {
     return this.chartRect.w;
   }
 
+  public getVisibleData(): number[] {
+    let lhs = Math.floor((this.visible.min.x - this.xstart) / this.xstep);
+    let rhs = Math.ceil((this.visible.max.x - this.xstart) / this.xstep);
+    return [ lhs, rhs ];
+  }
 
   public setData(xstep: number, buffer: Float32Array, xstart:number = 0) {
     this.xstep = xstep
